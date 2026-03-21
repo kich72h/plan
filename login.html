@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 | Antigravity Sales Ledger</title>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="login.css">
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div class="login-wrapper">
+        <div class="login-card glass">
+            <div class="brand">
+                <i class="ph ph-notebook ph-fill"></i>
+                <h1>The PLAN</h1>
+            </div>
+            <p class="subtitle">프리미엄 매출·수금 관리대장</p>
+            
+            <div class="login-form">
+                <button id="google-btn" class="google-btn">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google">
+                    구글 계정으로 로그인
+                </button>
+                <p id="error-msg" class="error-msg"></p>
+            </div>
+            
+            <div class="footer">
+                &copy; 2026 THE PLAN. All rights reserved.
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced Weather Widget -->
+    <div id="weather-widget" class="weather-widget glass">
+        <div class="weather-current">
+            <div class="current-main">
+                <span class="curr-temp">--°C</span>
+                <span class="curr-city">서울</span>
+            </div>
+        </div>
+        <div class="weather-week" id="weather-week">
+            <!-- 7-day items will be injected here -->
+        </div>
+    </div>
+
+    <!-- Hourly Forecast Popup -->
+    <div id="hourly-popup" class="weather-popup">
+        <div class="popup-content glass">
+            <div class="popup-header">
+                <h3 id="popup-date">--월 --일 시간별 날씨</h3>
+                <button id="close-popup">&times;</button>
+            </div>
+            <div class="hourly-scroll" id="hourly-list">
+                <!-- Hourly items injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="login.js"></script>
+</body>
+</html>
