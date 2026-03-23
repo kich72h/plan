@@ -149,7 +149,7 @@ function Modal({ init, onSave, onClose, traders }) {
                     h('div', { className: 'form-group' }, FLat(2, '거래처'), h('input', { type: 'text', value: trader, onChange: e => setTrader(e.target.value), list: 't-list', onKeyDown: handleEnter }))
                 ),
                 h('div', { className: 'form-group', style: { marginTop: 15 } }, 
-                    FLat(3, '품목/내용'), h('input', { type: 'text', style: { width: '100%' }, value: item, onChange: e => setItem(e.target.value), onKeyDown: handleEnter })
+                    FLat(3, '품목'), h('input', { type: 'text', style: { width: '100%' }, value: item, onChange: e => setItem(e.target.value), list: 'i-list', placeholder: '품목 선택/입력', onKeyDown: handleEnter })
                 ),
                 h('div', { className: 'form-row', style: { marginTop: 15 } },
                     h('div', { className: 'form-group' }, FLat(4, '매출금액'), h('input', { type: 'number', value: amount, onChange: e => handleAmountChange(e.target.value), onKeyDown: handleEnter })),
@@ -232,12 +232,26 @@ function SalesChart({ rows }) {
 // ── MAIN APP ──
 function App() {
     const [rows, setRows] = useState([]);
-    const [view, setView] = useState('dashboard');
+    const [view, setView] = useState('ledger'); // Default to ledger to show the main feature
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null);
     const [selected, setSelected] = useState(new Set());
-    const [payIdx, setPayIdx] = useState(null); // 인라인 수금 패널 인덱스
+    const [payIdx, setPayIdx] = useState(null); 
     const [syncKey, setSyncKey] = useState(localStorage.getItem('ag_sync_key') || '');
+    const [traderDetail, setTraderDetail] = useState(null); 
+    const [showSidebar, setShowSidebar] = useState(false); 
+    const [staffList, setStaffList] = useState(() => JSON.parse(localStorage.getItem('ag_staff_list') || '[]'));
+    const [newStaff, setNewStaff] = useState('');
+    const role = useMemo(() => localStorage.getItem('ag_user_role') || 'staff', []);
+
+    const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+    const isAdmin = role === 'admin';
+
+    const requestSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+        setSortConfig({ key, direction });
+    };
 
     // Cloud Sync Logic (JSONBin.io)
     const syncData = async (mode) => {
@@ -305,6 +319,11 @@ function App() {
         if (rows.length > 0) localStorage.setItem(KEY, JSON.stringify(rows));
     }, [rows]);
 
+    useEffect(() => {
+        localStorage.setItem('ag_staff_list', JSON.stringify(staffList));
+    }, [staffList]);
+
+
     const stats = useMemo(() => {
         let t = 0, c = 0, b = 0;
         rows.forEach(r => {
@@ -317,12 +336,37 @@ function App() {
         return { t, c, b, rate: t ? Math.round(c / t * 100) : 0 };
     }, [rows]);
 
+    const traders = useMemo(() => Array.from(new Set(rows.map(r => r.trader))).sort(), [rows]);
+    const items = useMemo(() => Array.from(new Set(rows.map(r => r.item))).sort(), [rows]);
+
     const filtered = useMemo(() => {
         const s = search.toLowerCase();
         return rows.filter(r => r.trader.toLowerCase().includes(s) || r.item.toLowerCase().includes(s));
     }, [rows, search]);
 
-    const traders = useMemo(() => [...new Set(rows.map(r => r.trader))], [rows]);
+    const sortedFiltered = useMemo(() => {
+        const sorted = [...filtered].sort((a, b) => {
+            let aVal = a[sortConfig.key];
+            let bVal = b[sortConfig.key];
+            
+            // Special handling for calculated columns if needed
+            if (sortConfig.key === 'total') {
+                aVal = (+a.amount || 0) + (+a.vat || 0);
+                bVal = (+b.amount || 0) + (+b.vat || 0);
+            } else if (sortConfig.key === 'paid') {
+                aVal = (a.payments || []).reduce((s, p) => s + p.amt, 0);
+                bVal = (b.payments || []).reduce((s, p) => s + p.amt, 0);
+            } else if (sortConfig.key === 'remain') {
+                aVal = ((+a.amount || 0) + (+a.vat || 0)) - (a.payments || []).reduce((s, p) => s + p.amt, 0);
+                bVal = ((+b.amount || 0) + (+b.vat || 0)) - (b.payments || []).reduce((s, p) => s + p.amt, 0);
+            }
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        return sorted;
+    }, [filtered, sortConfig]);
 
     const saveRow = (data) => {
         if (rows.find(r => r.id === data.id)) {
@@ -354,15 +398,18 @@ function App() {
     };
 
     return h('div', { id: 'app' },
+        h('div', { className: `sidebar-overlay ${showSidebar ? 'active' : ''}`, onClick: () => setShowSidebar(false) }),
         /* Sidebar */
-        h('aside', { className: 'sidebar' },
+        h('aside', { className: `sidebar ${showSidebar ? 'open' : ''}` },
             h('div', { className: 'logo' }, h('i', { className: 'ph ph-notebook ph-fill' }), h('span', { style: { fontSize: '1.1rem' } }, 'The PLAN')),
-            h('nav', null,
-                h('button', { className: `nav-item ${view === 'dashboard' ? 'active' : ''}`, onClick: () => setView('dashboard') }, h('i', { className: 'ph ph-circles-four' }), '대시보드'),
-                h('button', { className: `nav-item ${view === 'ledger' ? 'active' : ''}`, onClick: () => setView('ledger') }, h('i', { className: 'ph ph-list-bullets' }), '매출 내역'),
-                h('button', { className: `nav-item ${view === 'traders' ? 'active' : ''}`, onClick: () => setView('traders') }, h('i', { className: 'ph ph-users' }), '거래처 관리'),
-                h('button', { className: `nav-item ${view === 'settings' ? 'active' : ''}`, onClick: () => setView('settings') }, h('i', { className: 'ph ph-gear' }), '설정')
+            h('nav', { className: 'main-nav' },
+                h('button', { className: `nav-item ${view === 'dashboard' ? 'active' : ''}`, onClick: () => { setView('dashboard'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-chart-pie' }), ' 대시보드'),
+                h('button', { className: `nav-item ${view === 'ledger' ? 'active' : ''}`, onClick: () => { setView('ledger'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-list-bullets' }), ' 매출장부'),
+                h('button', { className: `nav-item ${view === 'traders' ? 'active' : ''}`, onClick: () => { setView('traders'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-users' }), ' 거래처목록'),
+                h('button', { className: `nav-item ${view === 'settings' ? 'active' : ''}`, onClick: () => { setView('settings'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-gear' }), ' 설정')
             ),
+
+
             h('div', { className: 'sidebar-footer' },
                 h('button', { id: 'btn-logout', style: { width: '100%', padding: 12, borderRadius: 12, border: '1px solid var(--accent)', color: 'var(--accent)', background: 'none', cursor: 'pointer' }, onClick: () => { if (confirm('로그아웃?')) { localStorage.removeItem('ag_auth'); location.href = 'login.html'; } } }, h('i', { className: 'ph ph-sign-out' }), ' 로그아웃')
             )
@@ -370,30 +417,49 @@ function App() {
 
         /* Main */
         h('main', { className: 'main-content' },
-            h('header', { className: 'top-header', style: { display: 'flex', gap: 15, alignItems: 'center' } },
-                h('div', { className: 'search-bar', style: { flex: 1 } }, h('i', { className: 'ph ph-magnifying-glass' }), h('input', { placeholder: '검색어 입력...', value: search, onChange: e => setSearch(e.target.value) })),
-                h('select', { 
-                    style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', color: '#fff', padding: '10px 15px', borderRadius: 12, outline: 'none', cursor: 'pointer' },
-                    onChange: e => setSearch(e.target.value === 'all' ? '' : e.target.value)
-                },
-                    h('option', { value: 'all' }, '전체 거래처'),
-                    traders.map(t => h('option', { key: t, value: t }, t))
+            /* Header */
+            h('header', { className: 'top-header' },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 15 } },
+                    h('button', { className: 'menu-btn', onClick: () => setShowSidebar(true) }, h('i', { className: 'ph ph-list' })),
+                    h('div', { className: 'search-bar', style: { flex: 1 } }, h('i', { className: 'ph ph-magnifying-glass' }), h('input', { placeholder: '검색어 입력...', value: search, onChange: e => setSearch(e.target.value) }))
                 ),
-                h('div', { className: 'user-profile' },
-                    h('button', { className: 'btn-add-sales', style: { background: '#f59e0b' }, onClick: () => setModal({}) }, h('i', { className: 'ph ph-plus' }), ' 새 거래')
+
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 15 } },
+                    h('select', { 
+                        style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', color: '#fff', padding: '8px 12px', borderRadius: 10, outline: 'none', cursor: 'pointer' },
+                        onChange: e => setSearch(e.target.value === 'all' ? '' : e.target.value)
+                    },
+                        h('option', { value: 'all' }, '전체 거래처'),
+                        traders.map(t => h('option', { key: t, value: t }, t))
+                    ),
+                    h('div', { className: 'user-profile' },
+                        h('span', { id: 'current-date' }, TODAY),
+                        h('div', { className: 'auth-info', style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                            h('span', { className: 'badge', style: { background: isAdmin ? 'var(--primary)' : 'rgba(255,255,255,0.1)' } }, isAdmin ? '관리자' : '직원'),
+                            h('button', { 
+                                className: 'act-btn', 
+                                style: { width: 'auto', padding: '0 8px', fontSize: '0.75rem' },
+                                onClick: () => { localStorage.removeItem('ag_auth'); window.location.reload(); }
+                            }, '로그아웃')
+                        )
+                    )
                 )
             ),
 
             /* Bulk Bar */
-            selected.size > 0 && h('div', { style: { background: 'var(--primary)', color: '#fff', padding: '10px 20px', borderRadius: 12, marginBottom: 15, display: 'flex', alignItems: 'center', justifyContent: 'space-between', animation: 'slideUp 0.3s' } },
-                h('span', { style: { fontWeight: 700 } }, `${selected.size}건 선택됨`),
-                h('div', { style: { display: 'flex', gap: 10 } },
-                    h('button', { className: 'btn-sm', style: { background: 'var(--accent)', color: '#fff', border: 'none' }, onClick: deleteRows }, '일괄 삭제'),
-                    h('button', { className: 'btn-sm', style: { background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none' }, onClick: () => setSelected(new Set()) }, '취소')
+            selected.size > 0 && h('div', { className: 'bulk-bar', style: { background: 'var(--primary)', color: '#fff', padding: '10px 15px', borderRadius: 12, marginBottom: 15, display: 'flex', alignItems: 'center', justifyContent: 'space-between', animation: 'slideUp 0.3s', flexWrap: 'wrap', gap: 10 } },
+                h('span', { style: { fontWeight: 700, fontSize: '0.9rem' } }, `${selected.size}건 선택됨`),
+                h('div', { style: { display: 'flex', gap: 8 } },
+                    h('button', { 
+                        className: 'btn-delete', 
+                        style: { background: 'rgba(244,63,94,0.2)', color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: '0.8rem', opacity: isAdmin ? 1 : 0.5, border: 'none' }, 
+                        onClick: isAdmin ? deleteRows : () => showToast('관리자 권한이 필요합니다.')
+                    }, '선택 삭제'),
+                    h('button', { className: 'btn-sm', style: { background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none', padding: '6px 12px' }, onClick: () => setSelected(new Set()) }, '취소')
                 )
             ),
 
-
+            /* Views */
             view === 'dashboard' && h('div', null,
                 h('div', { className: 'stats-grid' },
                     h('div', { className: 'stat-card' }, h('div', { className: 'stat-info' }, h('h3', null, '총 매출액'), h('div', { className: 'value' }, N(stats.t))), h('div', { className: 'stat-icon primary' }, h('i', { className: 'ph ph-chart-line-up' }))),
@@ -414,18 +480,20 @@ function App() {
             ),
 
             view === 'ledger' && h('div', { className: 'ledger-container glass' },
-                h('div', { className: 'list-header' }, h('h2', null, '매출 내역 관리'), h('span', { className: 'count-badge' }, `${filtered.length}건`)),
+                h('div', { className: 'list-header' }, 
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 15 } }, h('h2', null, '매출 내역 관리'), h('span', { className: 'count-badge' }, `${filtered.length}건`)),
+                    h('button', { className: 'btn-add-sales', onClick: () => setModal({}) }, h('i', { className: 'ph ph-plus' }), ' 신규 등록')
+                ),
                 h('table', { className: 'ledger-table' },
                     h('thead', null, h('tr', null,
                         h('th', { style: { width: 40 } }, h('input', { type: 'checkbox', checked: selected.size > 0 && selected.size === filtered.length, onChange: toggleAll })),
-                        h('th', null, '날짜'), h('th', null, '거래처'), h('th', null, '품목/내용'), 
-                        h('th', null, '매출금액'), h('th', null, '부가세'), h('th', null, '합계금액'), 
-                        h('th', null, '수금합계'), h('th', null, '누적잔액'), h('th', null, '상태'), h('th', null, '관리')
+                        [['date', '날짜'], ['trader', '거래처'], ['item', '품목/내용'], ['amount', '매출금액'], ['vat', '부가세'], ['total', '합계금액'], ['paid', '수금합계'], ['remain', '누적잔액']].map(([key, label]) => 
+                            h('th', { key, style: { cursor: 'pointer' }, onClick: () => requestSort(key) }, label, sortConfig.key === key && h('span', { style: { marginLeft: 4 } }, sortConfig.direction === 'asc' ? '▲' : '▼'))
+                        ),
+                        h('th', null, '관리')
                     )),
-                    h('tbody', null, filtered.map((r, i) => {
-                        const sales = +r.amount || 0;
-                        const vat = +r.vat || 0;
-                        const total = sales + vat;
+                    h('tbody', null, sortedFiltered.map((r, i) => {
+                        const total = (+r.amount || 0) + (+r.vat || 0);
                         const paid = (r.payments || []).reduce((s, p) => s + p.amt, 0);
                         const remain = total - paid;
                         const isPayOpen = payIdx === i;
@@ -434,33 +502,15 @@ function App() {
                         return h(React.Fragment, { key: r.id },
                             h('tr', null,
                                 h('td', null, h('input', { type: 'checkbox', checked: selected.has(r.id), onChange: () => toggleRow(r.id) })),
-                                h('td', { style: { fontSize: '0.85rem' } }, r.date),
-                                h('td', { className: 'bold' }, r.trader),
-                                h('td', null, 
-                                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-                                        r.item,
-                                        (r.payments?.length > 1) && h('span', { style: { fontSize: '0.7rem', background: 'rgba(124, 58, 237, 0.1)', color: '#8b5cf6', padding: '2px 6px', borderRadius: 4, fontWeight: 700 } }, `분할 ${r.payments.length}회`)
-                                    )
-                                ),
-                                h('td', { className: 'pn' }, N(sales)),
-                                h('td', { className: 'pn' }, N(vat)),
-                                h('td', { className: 'pn bold' }, N(total)),
+                                h('td', null, r.date), h('td', { className: 'bold' }, r.trader), h('td', null, r.item),
+                                h('td', { className: 'pn' }, N(r.amount)), h('td', { className: 'pn' }, N(r.vat)), h('td', { className: 'pn bold' }, N(total)),
                                 h('td', { className: 'pn', style: { color: 'var(--success)' } }, N(paid)),
-                                h('td', { className: 'pn', style: { background: remain < 0 ? 'rgba(244, 63, 94, 0.05)' : 'rgba(255,255,100,0.03)', color: remain < 0 ? 'var(--accent)' : 'inherit' } }, N(remain)),
-                                h('td', null, 
-                                    status === 'ok' && h('span', { className: 'badge b-ok' }, '수금완료'),
-                                    status === 'par' && h('span', { className: 'badge b-par' }, '일부수금'),
-                                    status === 'pend' && h('span', { className: 'badge b-pend' }, '미수금')
-                                ),
-                                h('td', null,
-                                    h('div', { className: 'act-row' },
-                                        h('button', { className: 'pay-btn-v', onClick: () => setPayIdx(isPayOpen ? null : i) }, 
-                                            h('span', null, '💰 ', r.payments?.length || 0, '건'), h('i', { className: isPayOpen ? 'ph ph-caret-up' : 'ph ph-caret-down' })
-                                        ),
-                                        h('button', { className: 'act-btn edit', onClick: () => setModal(r) }, h('i', { className: 'ph ph-pencil-simple' })),
-                                        h('button', { className: 'act-btn del', onClick: () => { if(confirm('삭제하시겠습니까?')) setRows(rows.filter(x=>x.id!==r.id)) } }, h('i', { className: 'ph ph-trash' }))
-                                    )
-                                )
+                                h('td', { className: 'pn', style: { color: remain > 0 ? 'var(--accent)' : 'inherit' } }, N(remain)),
+                                h('td', null, h('div', { className: 'act-row' },
+                                    h('button', { className: 'pay-btn-v', onClick: () => setPayIdx(isPayOpen ? null : i) }, h('i', { className: isPayOpen ? 'ph ph-caret-up' : 'ph ph-caret-down' })),
+                                    h('button', { className: 'act-btn edit', onClick: () => setModal(r) }, h('i', { className: 'ph ph-pencil-simple' })),
+                                    h('button', { className: 'act-btn del', onClick: () => { if(confirm('삭제하시겠습니까?')) setRows(rows.filter(x=>x.id!==r.id)) } }, h('i', { className: 'ph ph-trash' }))
+                                ))
                             ),
                             isPayOpen && h('tr', null, h('td', { colSpan: 11, style: { padding: 0 } }, h(PayPanel, { row: r, onClose: () => setPayIdx(null), onSave: saveRow })))
                         );
@@ -468,43 +518,55 @@ function App() {
                 )
             ),
 
-            view === 'traders' && h('div', { className: 'trader-list' },
-                traders.map(t => {
-                    const tRows = rows.filter(r => r.trader === t);
-                    const tTotal = tRows.reduce((a, b) => a + (+b.amount || 0) + (+b.vat || 0), 0);
-                    const tPaid = tRows.reduce((a, b) => a + (b.payments || []).reduce((s, p) => s + p.amt, 0), 0);
-                    return h('div', { className: 'trader-card glass', key: t },
-                        h('h4', null, t),
-                        h('div', { className: 'trader-details' },
-                            h('span', null, '거래:', h('b', null, tRows.length + '건')),
-                            h('span', null, '매출:', h('b', null, N(tTotal))),
-                            h('span', { style: { color: (tTotal - tPaid) > 0 ? 'var(--accent)' : 'var(--success)' } }, '미수:', h('b', null, N(tTotal - tPaid)))
-                        )
-                    );
-                })
+            view === 'traders' && h('div', { className: 'ledger-container glass' },
+                h('div', { className: 'list-header' }, h('h2', null, '거래처 목록 및 현황')),
+                h('table', { className: 'ledger-table' },
+                    h('thead', null, h('tr', null, h('th', null, '거래처명'), h('th', null, '건수'), h('th', null, '매출총액'), h('th', null, '수금합계'), h('th', null, '미수금액'), h('th', null, '수금율'), h('th', null, '상세'))),
+                    h('tbody', null, traders.map(t => {
+                        const tRows = rows.filter(r => r.trader === t);
+                        const tTotal = tRows.reduce((a, b) => a + (+b.amount || 0) + (+b.vat || 0), 0);
+                        const tPaid = tRows.reduce((a, b) => a + (b.payments || []).reduce((s, p) => s + p.amt, 0), 0);
+                        const tRemain = tTotal - tPaid;
+                        const rate = tTotal > 0 ? Math.floor((tPaid / tTotal) * 100) : 0;
+                        return h('tr', { key: t },
+                            h('td', { className: 'bold' }, t), h('td', null, tRows.length), h('td', { className: 'pn' }, N(tTotal)), h('td', { className: 'pn', style: { color: 'var(--success)' } }, N(tPaid)), h('td', { className: 'pn', style: { color: tRemain > 0 ? 'var(--accent)' : 'inherit' } }, N(tRemain)),
+                            h('td', null, h('span', { className: `rate-badge ${rate >= 90 ? 'rate-high' : rate >= 50 ? 'rate-mid' : 'rate-low'}` }, `${rate}%`)),
+                            h('td', null, h('button', { className: 'pay-btn-v', onClick: () => setTraderDetail(t) }, '내역보기'))
+                        );
+                    }))
+                )
             ),
 
             view === 'settings' && h('div', { className: 'ledger-container glass', style: { maxWidth: 500 } },
                 h('h2', { style: { marginBottom: 20 } }, '⚙️ 시스템 설정'),
+                /* 직원 관리 */
+                h('div', { style: { marginBottom: 30, padding: 15, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid var(--glass-border)' } },
+                    h('h4', { style: { marginBottom: 12, color: 'var(--secondary)' } }, '👤 직원 등록 및 관리'),
+                    h('div', { style: { display: 'flex', gap: 8, marginBottom: 15 } },
+                        h('input', { className: 'fi', style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', padding: 10, borderRadius: 8, flex: 1, color: '#fff' }, placeholder: '직원명 입력', value: newStaff, onChange: e => setNewStaff(e.target.value) }),
+                        h('button', { className: 'btn-submit', style: { margin: 0, width: 'auto', padding: '0 20px' }, onClick: () => { if (!newStaff) return; setStaffList([...staffList, { id: Date.now(), name: newStaff }]); setNewStaff(''); showToast('등록 완료'); } }, '등록')
+                    ),
+                    h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+                        staffList.map(s => h('div', { key: s.id, className: 'badge', style: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.1)', padding: '5px 12px', borderRadius: 20 } },
+                            s.name, h('i', { className: 'ph ph-x', style: { cursor: 'pointer', fontSize: '0.86rem' }, onClick: () => setStaffList(staffList.filter(x => x.id !== s.id)) })
+                        )),
+                        staffList.length === 0 && h('span', { style: { fontSize: '0.8rem', color: 'var(--text-dim)' } }, '등록된 직원이 없습니다.')
+                    )
+                ),
+                /* 클라우드 동기화 */
                 h('div', { style: { marginBottom: 25 } },
                     h('h4', { style: { marginBottom: 10 } }, '☁️ 클라우드 동기화'),
-                    h('p', { style: { fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: 15 } }, '연동 코드를 사용해 다른 PC와 데이터를 공유합니다.'),
-                    h('input', { 
-                        className: 'fi', 
-                        style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', padding: 10, borderRadius: 8, width: '100%', color: '#fff', marginBottom: 10 }, 
-                        placeholder: '연동 코드 입력 (예: my-pc-sync)',
-                        value: syncKey,
-                        onChange: e => setSyncKey(e.target.value)
-                    }),
+                    h('input', { className: 'fi', style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', padding: 10, borderRadius: 8, width: '100%', color: '#fff', marginBottom: 10 }, placeholder: '연동 코드 입력', value: syncKey, onChange: e => setSyncKey(e.target.value) }),
                     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
                         h('button', { className: 'btn-submit', style: { margin: 0, background: 'var(--secondary)' }, onClick: () => syncData('up') }, '데이터 올리기'),
                         h('button', { className: 'btn-submit', style: { margin: 0, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }, onClick: () => syncData('down') }, '데이터 받기')
                     )
                 ),
+                /* 로컬 백업 */
                 h('div', null,
                     h('h4', { style: { marginBottom: 10 } }, '💾 로컬 백업'),
                     h('button', { className: 'btn-submit', style: { margin: 0, background: 'var(--success)' }, onClick: () => {
-                        const blob = new Blob([JSON.stringify(rows)], { type: 'application/json' });
+                        const blob = new Blob([JSON.stringify({ rows, staffList })], { type: 'application/json' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a'); a.href = url; a.download = `매출관리_백업_${TODAY}.json`; a.click();
                     } }, '파일로 내보내기')
@@ -512,8 +574,26 @@ function App() {
             )
         ),
 
-        /* Modal Rendering */
-        modal && h(Modal, { init: modal.id ? modal : null, traders, onSave: saveRow, onClose: () => setModal(null) })
+        /* Global Elements */
+        h('datalist', { id: 't-list' }, traders.map(t => h('option', { key: t, value: t }))),
+        h('datalist', { id: 'i-list' }, items.map(i => h('option', { key: i, value: i }))),
+        modal && h(Modal, { init: modal.id ? modal : null, traders, onSave: saveRow, onClose: () => setModal(null) }),
+        traderDetail && h('div', { className: 'modal active', onClick: e => e.target === e.currentTarget && setTraderDetail(null) },
+            h('div', { className: 'modal-content glass trader-history-modal' },
+                h('div', { className: 'modal-header' }, h('h3', null, h('b', null, traderDetail), ' 상세 거래 내역'), h('button', { className: 'close-modal', onClick: () => setTraderDetail(null) }, '×')),
+                h('div', { className: 'mbody' },
+                    h('table', { className: 'ledger-table' },
+                        h('thead', null, h('tr', null, h('th', null, '날짜'), h('th', null, '품목'), h('th', null, '합계'), h('th', null, '수금'), h('th', null, '잔액'))),
+                        h('tbody', null, rows.filter(r => r.trader === traderDetail).map(r => {
+                            const total = (+r.amount || 0) + (+r.vat || 0);
+                            const paid = (r.payments || []).reduce((s, p) => s + p.amt, 0);
+                            const remain = total - paid;
+                            return h('tr', { key: r.id }, h('td', null, r.date), h('td', null, r.item), h('td', { className: 'pn' }, N(total)), h('td', { className: 'pn', style: { color: 'var(--success)' } }, N(paid)), h('td', { className: 'pn', style: { color: remain > 0 ? 'var(--accent)' : 'inherit' } }, N(remain)));
+                        }))
+                    )
+                )
+            )
+        )
     );
 }
 

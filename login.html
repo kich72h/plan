@@ -21,10 +21,18 @@
             <p class="subtitle">프리미엄 매출·수금 관리대장</p>
             
             <div class="login-form">
-                <button id="google-btn" class="google-btn">
+                <div class="role-selector" style="margin-bottom: 20px; display: flex; gap: 10px;">
+                    <button id="admin-btn" class="google-btn" style="flex: 1; margin: 0; background: linear-gradient(135deg, #4facfe, #00f2fe); border: none;">
+                        <i class="ph ph-crown"></i> 관리자 로그인
+                    </button>
+                    <button id="staff-btn" class="google-btn" style="flex: 1; margin: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);">
+                        <i class="ph ph-user"></i> 직원 로그인
+                    </button>
+                </div>
+                <!-- <button id="google-btn" class="google-btn">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google">
                     구글 계정으로 로그인
-                </button>
+                </button> -->
                 <p id="error-msg" class="error-msg"></p>
             </div>
             

@@ -1,16 +1,23 @@
 // login.js - Antigravity Login Logic & Enhanced Weather
 
-const googleBtn = document.getElementById('google-btn');
+const adminBtn = document.getElementById('admin-btn');
+const staffBtn = document.getElementById('staff-btn');
 const errorMsg = document.getElementById('error-msg');
 
-// 1. Google Login Simulation
-googleBtn.addEventListener('click', () => {
-    const originalText = googleBtn.innerHTML;
-    googleBtn.innerHTML = '<span class="ph ph-spinner ph-spin" style="font-size:1.5rem; color:#3c4043;"></span>';
-    setTimeout(() => {
-        localStorage.setItem('ag_auth', 'true');
-        window.location.href = 'index.html';
-    }, 1200);
+const handleLogin = (role) => {
+    localStorage.setItem('ag_auth', 'true');
+    localStorage.setItem('ag_user_role', role);
+    window.location.href = 'index.html';
+};
+
+adminBtn?.addEventListener('click', () => {
+    adminBtn.innerHTML = '<span class="ph ph-spinner ph-spin"></span>';
+    setTimeout(() => handleLogin('admin'), 800);
+});
+
+staffBtn?.addEventListener('click', () => {
+    staffBtn.innerHTML = '<span class="ph ph-spinner ph-spin"></span>';
+    setTimeout(() => handleLogin('staff'), 800);
 });
 
 if (localStorage.getItem('ag_auth') === 'true') {
