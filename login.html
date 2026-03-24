@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>로그인 | Antigravity Sales Ledger</title>
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="login.css">
 </head>
+
 <body>
     <div id="canvas-container"></div>
 
@@ -19,23 +23,24 @@
                 <h1>The PLAN</h1>
             </div>
             <p class="subtitle">프리미엄 매출·수금 관리대장</p>
-            
+
             <div class="login-form">
-                <div class="role-selector" style="margin-bottom: 20px; display: flex; gap: 10px;">
-                    <button id="admin-btn" class="google-btn" style="flex: 1; margin: 0; background: linear-gradient(135deg, #4facfe, #00f2fe); border: none;">
-                        <i class="ph ph-crown"></i> 관리자 로그인
-                    </button>
-                    <button id="staff-btn" class="google-btn" style="flex: 1; margin: 0; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);">
-                        <i class="ph ph-user"></i> 직원 로그인
-                    </button>
+                <!-- Google Sign-In Integration -->
+                <script src="https://accounts.google.com/gsi/client" async defer></script>
+                <div id="g_id_onload"
+                    data-client_id="572621251469-lajf0f26pv1223eprcos92mcffo9raaf.apps.googleusercontent.com"
+                    data-context="signin" data-ux_mode="popup" data-callback="handleGoogleLogin"
+                    data-auto_prompt="false">
                 </div>
-                <!-- <button id="google-btn" class="google-btn">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google">
-                    구글 계정으로 로그인
-                </button> -->
+
+                <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline"
+                    data-text="signin_with" data-size="large" data-logo_alignment="left"
+                    style="display: flex; justify-content: center; margin-bottom: 20px;">
+                </div>
+
                 <p id="error-msg" class="error-msg"></p>
             </div>
-            
+
             <div class="footer">
                 &copy; 2026 THE PLAN. All rights reserved.
             </div>
@@ -70,4 +75,5 @@
 
     <script src="login.js"></script>
 </body>
+
 </html>
