@@ -1,14 +1,15 @@
 :root {
-    --bg-dark: #0a0c10;
-    --sidebar-bg: rgba(20, 25, 35, 0.7);
-    --glass-bg: rgba(255, 255, 255, 0.05);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --primary: #4f46e5;
-    --secondary: #06b6d4;
-    --text-main: #f8fafc;
-    --text-dim: #94a3b8;
-    --accent: #f43f5e;
-    --success: #10b981;
+    /* The Luminous Ledger Scheme based on Stitch AI */
+    --bg-dark: #060e20;
+    --sidebar-bg: rgba(15, 25, 48, 0.85);
+    --glass-bg: #0f1930;
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --primary: #3bbffa;
+    --secondary: #22b1ec;
+    --text-main: #dee5ff;
+    --text-dim: #a3aac4;
+    --accent: #f8a010;
+    --success: #3bbffa; /* Cyan success */
 }
 
 * {
@@ -555,6 +556,9 @@ nav {
     .stat-card { padding: 15px; }
     .stat-info .value { font-size: 1.4rem; }
     .btn-add-sales { width: 100%; justify-content: center; }
+
+    .trader-history-modal { width: 95vw !important; padding: 15px; }
+    .trader-history-modal .ledger-table th, .trader-history-modal .ledger-table td { padding: 8px 5px; font-size: 0.75rem; }
 }
 /* ── Badges ── */
 .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }

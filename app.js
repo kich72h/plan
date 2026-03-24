@@ -10,7 +10,7 @@ const TODAY = new Date().toISOString().split('T')[0];
 /* Enter 키를 누르면 다음 필드로 포커스 이동 */
 const handleEnter = (e) => {
     if (e.key === 'Enter') {
-        const container = e.target.closest('form') || e.target.closest('.mbody') || e.target.closest('.pp-add-grid');
+        const container = e.target.closest('.modal-content') || e.target.closest('form') || e.target.closest('.mbody') || e.target.closest('.pp-add-grid');
         if (!container) return;
         const inputs = Array.from(container.querySelectorAll('input:not([readonly]), select, .btn-submit, .pp-add-btn'));
         const idx = inputs.indexOf(e.target);
@@ -18,8 +18,8 @@ const handleEnter = (e) => {
             e.preventDefault();
             inputs[idx + 1].focus();
         } else if (idx === inputs.length - 1) {
-            // 마지막 필드에서 Enter 누르면 클릭 이벤트 발생 (저장 버튼 등)
-            // e.target.click(); 
+            e.preventDefault();
+            inputs[idx].click();
         }
     }
 };
@@ -36,6 +36,7 @@ function showToast(m) {
 
 /* 분할 수금 패널 (리스트 인라인) */
 function PayPanel({ row, onSave, onClose }) {
+    const isAdmin = localStorage.getItem('ag_user_role') === 'admin';
     const [pays, setPays] = useState(row.payments || []);
     const [newDate, setNewDate] = useState(TODAY);
     const [newAmt, setNewAmt] = useState('');
@@ -82,13 +83,13 @@ function PayPanel({ row, onSave, onClose }) {
                         h('td', { className: 'pn bold' }, N(p.amt), '원'),
                         h('td', null, p.note || '-'),
                         h('td', { className: 'pn', style: { color: 'var(--secondary)' } }, N(runningTotal), '원'),
-                        h('td', null, h('button', { className: 'pp-del-btn', onClick: () => delPay(p.id) }, '×'))
+                        h('td', null, isAdmin && h('button', { className: 'pp-del-btn', onClick: () => delPay(p.id) }, '×'))
                     );
                 })
             )
         ),
         /* 신규 수금 입력창 */
-        h('div', { className: 'pp-add-box' },
+        isAdmin && h('div', { className: 'pp-add-box' },
             h('div', { className: 'pp-add-grid' },
                 h('input', { type: 'date', className: 'pp-in', value: newDate, onChange: e => setNewDate(e.target.value), onKeyDown: handleEnter }),
                 h('input', { type: 'number', className: 'pp-in', placeholder: '수금금액', value: newAmt, onChange: e => setNewAmt(e.target.value), onKeyDown: handleEnter }),
@@ -323,6 +324,20 @@ function App() {
         localStorage.setItem('ag_staff_list', JSON.stringify(staffList));
     }, [staffList]);
 
+    // Daily Auto Backup Logic
+    useEffect(() => {
+        if (rows.length === 0) return;
+        const lastBackup = localStorage.getItem('ag_last_backup_date');
+        if (lastBackup !== TODAY) {
+            // Keep up to 7 days, remove older to save space
+            try {
+                localStorage.setItem(`ag_backup_${TODAY}`, JSON.stringify({ rows, staffList }));
+                localStorage.setItem('ag_last_backup_date', TODAY);
+                console.log(`Auto backup created for ${TODAY}`);
+            } catch (e) { console.error('Auto backup failed, localStorage might be full.', e); }
+        }
+    }, [rows, staffList, TODAY]);
+
 
     const stats = useMemo(() => {
         let t = 0, c = 0, b = 0;
@@ -406,7 +421,7 @@ function App() {
                 h('button', { className: `nav-item ${view === 'dashboard' ? 'active' : ''}`, onClick: () => { setView('dashboard'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-chart-pie' }), ' 대시보드'),
                 h('button', { className: `nav-item ${view === 'ledger' ? 'active' : ''}`, onClick: () => { setView('ledger'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-list-bullets' }), ' 매출장부'),
                 h('button', { className: `nav-item ${view === 'traders' ? 'active' : ''}`, onClick: () => { setView('traders'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-users' }), ' 거래처목록'),
-                h('button', { className: `nav-item ${view === 'settings' ? 'active' : ''}`, onClick: () => { setView('settings'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-gear' }), ' 설정')
+                isAdmin && h('button', { className: `nav-item ${view === 'settings' ? 'active' : ''}`, onClick: () => { setView('settings'); setShowSidebar(false); setSelected(new Set()); } }, h('i', { className: 'ph ph-gear' }), ' 설정')
             ),
 
 
@@ -433,7 +448,10 @@ function App() {
                         traders.map(t => h('option', { key: t, value: t }, t))
                     ),
                     h('div', { className: 'user-profile' },
-                        h('span', { id: 'current-date' }, TODAY),
+                        h('span', { id: 'current-date', style: { display: 'flex', flexDirection: 'column', textAlign: 'right', fontSize: '0.85rem' } }, 
+                            h('b', { style: { color: 'var(--text-main)', fontSize: '1rem' } }, localStorage.getItem('ag_user_name') || '사용자'), 
+                            TODAY
+                        ),
                         h('div', { className: 'auth-info', style: { display: 'flex', alignItems: 'center', gap: 10 } },
                             h('span', { className: 'badge', style: { background: isAdmin ? 'var(--primary)' : 'rgba(255,255,255,0.1)' } }, isAdmin ? '관리자' : '직원'),
                             h('button', { 
@@ -459,13 +477,19 @@ function App() {
                 )
             ),
 
-            /* Views */
             view === 'dashboard' && h('div', null,
-                h('div', { className: 'stats-grid' },
-                    h('div', { className: 'stat-card' }, h('div', { className: 'stat-info' }, h('h3', null, '총 매출액'), h('div', { className: 'value' }, N(stats.t))), h('div', { className: 'stat-icon primary' }, h('i', { className: 'ph ph-chart-line-up' }))),
-                    h('div', { className: 'stat-card' }, h('div', { className: 'stat-info' }, h('h3', null, '총 수금액'), h('div', { className: 'value', style: { color: 'var(--success)' } }, N(stats.c))), h('div', { className: 'stat-icon success' }, h('i', { className: 'ph ph-hand-coins' }))),
-                    h('div', { className: 'stat-card' }, h('div', { className: 'stat-info' }, h('h3', null, '미수금 총액'), h('div', { className: 'value', style: { color: 'var(--accent)' } }, N(stats.b))), h('div', { className: 'stat-icon accent' }, h('i', { className: 'ph ph-warning-circle' }))),
-                    h('div', { className: 'stat-card' }, h('div', { className: 'stat-info' }, h('h3', null, '수금율'), h('div', { className: 'value', style: { color: 'var(--secondary)' } }, stats.rate + '%')), h('div', { className: 'stat-icon secondary' }, h('i', { className: 'ph ph-files' })))
+                /* Stitch AI Dashboard Hero Cards */
+                h('div', { style: { display: 'flex', gap: 15, marginBottom: 25, flexDirection: window.innerWidth <= 600 ? 'column' : 'row' } },
+                    h('div', { style: { flex: 1, background: 'linear-gradient(135deg, rgba(15,25,48,0.9), rgba(9,19,40,0.9))', padding: '25px 20px', borderRadius: 20, borderTop: '1px solid rgba(255,255,255,0.1)', borderLeft: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden' } },
+                        h('div', { style: { color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: 8, fontWeight: 500 } }, '💸 총 매출액 (Total Sales)'),
+                        h('div', { style: { fontSize: '2.2rem', fontWeight: 700, color: 'var(--text-main)', letterSpacing: '-0.02em' } }, N(stats.t), '원'),
+                        h('div', { style: { position: 'absolute', right: -15, bottom: -15, opacity: 0.05, fontSize: '6rem' } }, '📈')
+                    ),
+                    h('div', { style: { flex: 1, background: 'linear-gradient(135deg, rgba(15,25,48,0.9), rgba(9,19,40,0.9))', padding: '25px 20px', borderRadius: 20, borderTop: '1px solid rgba(255,255,255,0.1)', borderLeft: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden' } },
+                        h('div', { style: { color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: 8, fontWeight: 500 } }, '⚠️ 미수 잔액 (Unpaid)'),
+                        h('div', { style: { fontSize: '2.2rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '-0.02em' } }, N(stats.b), '원'),
+                        h('div', { style: { position: 'absolute', right: -15, bottom: -15, opacity: 0.1, fontSize: '6rem', color: 'var(--accent)' } }, '⏳')
+                    )
                 ),
                 h(SalesChart, { rows }),
                 h('div', { className: 'ledger-container glass' },
@@ -482,7 +506,7 @@ function App() {
             view === 'ledger' && h('div', { className: 'ledger-container glass' },
                 h('div', { className: 'list-header' }, 
                     h('div', { style: { display: 'flex', alignItems: 'center', gap: 15 } }, h('h2', null, '매출 내역 관리'), h('span', { className: 'count-badge' }, `${filtered.length}건`)),
-                    h('button', { className: 'btn-add-sales', onClick: () => setModal({}) }, h('i', { className: 'ph ph-plus' }), ' 신규 등록')
+                    isAdmin && h('button', { className: 'btn-add-sales', onClick: () => setModal({}) }, h('i', { className: 'ph ph-plus' }), ' 신규 등록')
                 ),
                 h('table', { className: 'ledger-table' },
                     h('thead', null, h('tr', null,
@@ -508,8 +532,8 @@ function App() {
                                 h('td', { className: 'pn', style: { color: remain > 0 ? 'var(--accent)' : 'inherit' } }, N(remain)),
                                 h('td', null, h('div', { className: 'act-row' },
                                     h('button', { className: 'pay-btn-v', onClick: () => setPayIdx(isPayOpen ? null : i) }, h('i', { className: isPayOpen ? 'ph ph-caret-up' : 'ph ph-caret-down' })),
-                                    h('button', { className: 'act-btn edit', onClick: () => setModal(r) }, h('i', { className: 'ph ph-pencil-simple' })),
-                                    h('button', { className: 'act-btn del', onClick: () => { if(confirm('삭제하시겠습니까?')) setRows(rows.filter(x=>x.id!==r.id)) } }, h('i', { className: 'ph ph-trash' }))
+                                    isAdmin && h('button', { className: 'act-btn edit', onClick: () => setModal(r) }, h('i', { className: 'ph ph-pencil-simple' })),
+                                    isAdmin && h('button', { className: 'act-btn del', onClick: () => { if(confirm('삭제하시겠습니까?')) setRows(rows.filter(x=>x.id!==r.id)) } }, h('i', { className: 'ph ph-trash' }))
                                 ))
                             ),
                             isPayOpen && h('tr', null, h('td', { colSpan: 11, style: { padding: 0 } }, h(PayPanel, { row: r, onClose: () => setPayIdx(null), onSave: saveRow })))
@@ -537,13 +561,13 @@ function App() {
                 )
             ),
 
-            view === 'settings' && h('div', { className: 'ledger-container glass', style: { maxWidth: 500 } },
+            view === 'settings' && isAdmin && h('div', { className: 'ledger-container glass', style: { maxWidth: 500 } },
                 h('h2', { style: { marginBottom: 20 } }, '⚙️ 시스템 설정'),
                 /* 직원 관리 */
                 h('div', { style: { marginBottom: 30, padding: 15, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid var(--glass-border)' } },
-                    h('h4', { style: { marginBottom: 12, color: 'var(--secondary)' } }, '👤 직원 등록 및 관리'),
+                    h('h4', { style: { marginBottom: 12, color: 'var(--secondary)' } }, '👤 직원 등록 및 관리 (구글 계정)'),
                     h('div', { style: { display: 'flex', gap: 8, marginBottom: 15 } },
-                        h('input', { className: 'fi', style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', padding: 10, borderRadius: 8, flex: 1, color: '#fff' }, placeholder: '직원명 입력', value: newStaff, onChange: e => setNewStaff(e.target.value) }),
+                        h('input', { className: 'fi', style: { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', padding: 10, borderRadius: 8, flex: 1, color: '#fff' }, placeholder: '직원의 구글 이메일 입력 (예: user@gmail.com)', value: newStaff, onChange: e => setNewStaff(e.target.value) }),
                         h('button', { className: 'btn-submit', style: { margin: 0, width: 'auto', padding: '0 20px' }, onClick: () => { if (!newStaff) return; setStaffList([...staffList, { id: Date.now(), name: newStaff }]); setNewStaff(''); showToast('등록 완료'); } }, '등록')
                     ),
                     h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
@@ -562,14 +586,40 @@ function App() {
                         h('button', { className: 'btn-submit', style: { margin: 0, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }, onClick: () => syncData('down') }, '데이터 받기')
                     )
                 ),
-                /* 로컬 백업 */
+                /* 로컬 백업 및 복구 */
                 h('div', null,
-                    h('h4', { style: { marginBottom: 10 } }, '💾 로컬 백업'),
-                    h('button', { className: 'btn-submit', style: { margin: 0, background: 'var(--success)' }, onClick: () => {
-                        const blob = new Blob([JSON.stringify({ rows, staffList })], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a'); a.href = url; a.download = `매출관리_백업_${TODAY}.json`; a.click();
-                    } }, '파일로 내보내기')
+                    h('h4', { style: { marginBottom: 10 } }, '💾 로컬 자동 및 수동 백업'),
+                    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 15 } },
+                        h('button', { className: 'btn-submit', style: { margin: 0, background: 'var(--success)' }, onClick: () => {
+                            const blob = new Blob([JSON.stringify({ rows, staffList })], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a'); a.href = url; a.download = `매출관리_백업_${TODAY}.json`; a.click();
+                        } }, '파일로 내보내기 (수동)'),
+                        
+                        h('label', { className: 'btn-submit', style: { margin: 0, background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', textAlign: 'center', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, 
+                            '데이터 파일 복구하기',
+                            h('input', { type: 'file', accept: '.json', style: { display: 'none' }, onChange: (e) => {
+                                const file = e.target.files[0];
+                                if(!file) return;
+                                const reader = new FileReader();
+                                reader.onload = (evt) => {
+                                    try {
+                                        const data = JSON.parse(evt.target.result);
+                                        if(data.rows && Array.isArray(data.rows)) {
+                                            if(confirm(`총 ${data.rows.length}건의 데이터를 복구하시겠습니까? 기존 데이터는 덮어씌워집니다.`)) {
+                                                setRows(data.rows);
+                                                if(data.staffList) setStaffList(data.staffList);
+                                                showToast('데이터가 성공적으로 복구되었습니다.');
+                                            }
+                                        } else { alert('정상적인 백업 파일이 아닙니다.'); }
+                                    } catch(err) { alert('파일 읽기 오류: ' + err.message); }
+                                    e.target.value = ''; // Reset file input
+                                };
+                                reader.readAsText(file);
+                            } })
+                        )
+                    ),
+                    h('p', { style: { fontSize: '0.8rem', color: 'var(--text-dim)' } }, '* 매일 앱 실행 시 브라우저 내부에 자동 백업이 한 번씩 진행됩니다.')
                 )
             )
         ),
@@ -578,22 +628,63 @@ function App() {
         h('datalist', { id: 't-list' }, traders.map(t => h('option', { key: t, value: t }))),
         h('datalist', { id: 'i-list' }, items.map(i => h('option', { key: i, value: i }))),
         modal && h(Modal, { init: modal.id ? modal : null, traders, onSave: saveRow, onClose: () => setModal(null) }),
-        traderDetail && h('div', { className: 'modal active', onClick: e => e.target === e.currentTarget && setTraderDetail(null) },
-            h('div', { className: 'modal-content glass trader-history-modal' },
-                h('div', { className: 'modal-header' }, h('h3', null, h('b', null, traderDetail), ' 상세 거래 내역'), h('button', { className: 'close-modal', onClick: () => setTraderDetail(null) }, '×')),
-                h('div', { className: 'mbody' },
-                    h('table', { className: 'ledger-table' },
-                        h('thead', null, h('tr', null, h('th', null, '날짜'), h('th', null, '품목'), h('th', null, '합계'), h('th', null, '수금'), h('th', null, '잔액'))),
-                        h('tbody', null, rows.filter(r => r.trader === traderDetail).map(r => {
-                            const total = (+r.amount || 0) + (+r.vat || 0);
-                            const paid = (r.payments || []).reduce((s, p) => s + p.amt, 0);
-                            const remain = total - paid;
-                            return h('tr', { key: r.id }, h('td', null, r.date), h('td', null, r.item), h('td', { className: 'pn' }, N(total)), h('td', { className: 'pn', style: { color: 'var(--success)' } }, N(paid)), h('td', { className: 'pn', style: { color: remain > 0 ? 'var(--accent)' : 'inherit' } }, N(remain)));
-                        }))
+        traderDetail && (() => {
+            const tRows = rows.filter(r => r.trader === traderDetail).sort((a,b) => a.date > b.date ? -1 : 1);
+            const tTotal = tRows.reduce((a,b) => a + (+b.amount||0) + (+b.vat||0), 0);
+            const tPaid = tRows.reduce((a,b) => a + (b.payments||[]).reduce((s,p) => s + p.amt, 0), 0);
+            const tRemain = tTotal - tPaid;
+            const rate = tTotal > 0 ? Math.floor((tPaid / tTotal) * 100) : 0;
+
+            return h('div', { className: 'modal active', onClick: e => e.target === e.currentTarget && setTraderDetail(null) },
+                h('div', { className: 'modal-content glass trader-history-modal', style: { maxWidth: 850, width: '90%' } },
+                    h('div', { className: 'modal-header', style: { borderBottom: '1px solid var(--glass-border)', paddingBottom: 15 } }, 
+                        h('h3', { style: { fontSize: '1.4rem' } }, h('b', { style: { color: 'var(--secondary)' } }, traderDetail), ' 상세 내역 및 현황'), 
+                        h('button', { className: 'close-modal', onClick: () => setTraderDetail(null) }, '×')
+                    ),
+                    h('div', { className: 'mbody', style: { padding: '20px 0' } },
+                        /* Summary Stats */
+                        h('div', { style: { display: 'flex', gap: 15, marginBottom: 25, flexWrap: 'wrap' } },
+                            h('div', { style: { flex: 1, minWidth: 150, background: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, border: '1px solid var(--glass-border)' } },
+                                h('div', { style: { fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: 5 } }, '총 매출액'),
+                                h('div', { style: { fontSize: '1.4rem', fontWeight: 700 } }, N(tTotal), '원')
+                            ),
+                            h('div', { style: { flex: 1, minWidth: 150, background: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, border: '1px solid var(--glass-border)' } },
+                                h('div', { style: { fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: 5 } }, '수금 완료'),
+                                h('div', { style: { fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)' } }, N(tPaid), '원')
+                            ),
+                            h('div', { style: { flex: 1, minWidth: 150, background: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, border: '1px solid var(--glass-border)' } },
+                                h('div', { style: { fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: 5 } }, '미수 잔액'),
+                                h('div', { style: { fontSize: '1.4rem', fontWeight: 700, color: tRemain > 0 ? 'var(--accent)' : 'inherit' } }, N(tRemain), '원')
+                            ),
+                            h('div', { style: { flex: 1, minWidth: 100, background: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' } },
+                                h('div', { style: { fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: 5 } }, '수금율'),
+                                h('div', { style: { fontSize: '1.4rem', fontWeight: 700, color: rate >= 90 ? 'var(--success)' : (rate >= 50 ? '#f59e0b' : 'var(--accent)') } }, rate, '%')
+                            )
+                        ),
+                        /* Detail Table */
+                        h('div', { style: { maxHeight: '400px', overflowY: 'auto', borderRadius: 12, border: '1px solid var(--glass-border)' } },
+                            h('table', { className: 'ledger-table', style: { width: '100%' } },
+                                h('thead', { style: { position: 'sticky', top: 0, background: 'rgba(20,25,35,0.95)', zIndex: 1 } }, 
+                                    h('tr', null, h('th', null, '거래일자'), h('th', null, '품목/내용'), h('th', { style: { textAlign: 'right' } }, '해당건 총액'), h('th', { style: { textAlign: 'right' } }, '해당건 수금'), h('th', { style: { textAlign: 'right' } }, '건별 잔액'))
+                                ),
+                                h('tbody', null, tRows.map(r => {
+                                    const total = (+r.amount || 0) + (+r.vat || 0);
+                                    const paid = (r.payments || []).reduce((s, p) => s + p.amt, 0);
+                                    const remain = total - paid;
+                                    return h('tr', { key: r.id }, 
+                                        h('td', null, r.date), 
+                                        h('td', { className: 'bold' }, r.item), 
+                                        h('td', { className: 'pn', style: { textAlign: 'right' } }, N(total)), 
+                                        h('td', { className: 'pn', style: { color: 'var(--success)', textAlign: 'right' } }, N(paid)), 
+                                        h('td', { className: 'pn bold', style: { color: remain > 0 ? 'var(--accent)' : 'inherit', textAlign: 'right' } }, N(remain))
+                                    );
+                                }))
+                            )
+                        )
                     )
                 )
-            )
-        )
+            );
+        })()
     );
 }
 
