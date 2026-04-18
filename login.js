@@ -1,23 +1,69 @@
 // login.js - Antigravity Login Logic & Enhanced Weather
 
-const adminBtn = document.getElementById('admin-btn');
-const staffBtn = document.getElementById('staff-btn');
+const loginBtn = document.getElementById('custom-login-btn');
+const emailInput = document.getElementById('login-email');
+const pwdInput = document.getElementById('login-password');
 const errorMsg = document.getElementById('error-msg');
 
-const handleLogin = (role) => {
+function showErr(msg) {
+    if(errorMsg) errorMsg.innerText = msg;
+    if(loginBtn) loginBtn.innerText = '로그인';
+}
+
+function enrollSession(role, email, name) {
     localStorage.setItem('ag_auth', 'true');
     localStorage.setItem('ag_user_role', role);
+    localStorage.setItem('ag_user_email', email);
+    localStorage.setItem('ag_user_name', name);
     window.location.href = 'index.html';
-};
+}
 
-adminBtn?.addEventListener('click', () => {
-    adminBtn.innerHTML = '<span class="ph ph-spinner ph-spin"></span>';
-    setTimeout(() => handleLogin('admin'), 800);
+loginBtn?.addEventListener('click', () => {
+    const email = emailInput?.value.trim();
+    const pwd = pwdInput?.value.trim();
+    
+    if (!email || !pwd) {
+        showErr('이메일과 비밀번호를 모두 입력해주세요.');
+        return;
+    }
+    
+    loginBtn.innerHTML = '<span class="ph ph-spinner ph-spin"></span>';
+    
+    setTimeout(() => {
+        const staffList = JSON.parse(localStorage.getItem('ag_staff_list') || '[]');
+        
+        // 1. Admin Verification
+        if (email === 'kich72h@gmail.com' || email === 'kich72a@gmail.com' || email === 'admin@gmail.com') {
+            if (pwd === '0000') {
+                enrollSession('admin', email, '관리자');
+                return;
+            } else {
+                showErr('비밀번호가 일치하지 않습니다.'); return;
+            }
+        }
+        
+        // 2. Staff Verification
+        const isStaff = staffList.some(s => s.name === email || s.name === email.replace('@', '.'));
+        if (isStaff) {
+            if (pwd === '1111') {
+                enrollSession('staff', email, '직원');
+                return;
+            } else {
+                showErr('비밀번호가 일치하지 않습니다.'); return;
+            }
+        }
+        
+        // 3. Unauthorized
+        showErr('등록되지 않은 이메일 계정입니다.');
+    }, 600);
 });
 
-staffBtn?.addEventListener('click', () => {
-    staffBtn.innerHTML = '<span class="ph ph-spinner ph-spin"></span>';
-    setTimeout(() => handleLogin('staff'), 800);
+// Enter key support
+pwdInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loginBtn?.click();
+});
+emailInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') pwdInput?.focus();
 });
 
 if (localStorage.getItem('ag_auth') === 'true') {
