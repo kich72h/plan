@@ -31,18 +31,59 @@ const genEstNo = () => 'EST-' + TODAY.replace(/-/g, '') + '-' + String(Date.now(
 /* Enter 키를 누르면 다음 필드로 포커스 이동 */
 const handleEnter = (e) => {
     if (e.key === 'Enter') {
+        e.preventDefault();
+
+        // 견적서 품목 테이블 행(tr) 안에서의 이동 처리
+        const tr = e.target.closest('tr');
+        const estTable = e.target.closest('.est-table');
+        if (tr && estTable) {
+            const inputsInRow = Array.from(tr.querySelectorAll('input:not([readonly])'));
+            const idxInRow = inputsInRow.indexOf(e.target);
+            if (idxInRow > -1 && idxInRow < inputsInRow.length - 1) {
+                // 같은 행의 다음 필드로
+                inputsInRow[idxInRow + 1].focus();
+                return;
+            } else {
+                // 마지막 필드 → 다음 행의 첫 번째 입력 필드로
+                const allRows = Array.from(estTable.querySelectorAll('tbody tr'));
+                const rowIdx = allRows.indexOf(tr);
+                if (rowIdx > -1 && rowIdx < allRows.length - 1) {
+                    const nextRowInputs = Array.from(allRows[rowIdx + 1].querySelectorAll('input:not([readonly])'));
+                    if (nextRowInputs.length > 0) {
+                        nextRowInputs[0].focus();
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 일반 모달/폼 내 이동
         const container = e.target.closest('.modal-content') || e.target.closest('form') || e.target.closest('.mbody') || e.target.closest('.pp-add-grid');
         if (!container) return;
         const inputs = Array.from(container.querySelectorAll('input:not([readonly]), select, .btn-submit, .pp-add-btn'));
         const idx = inputs.indexOf(e.target);
         if (idx > -1 && idx < inputs.length - 1) {
-            e.preventDefault();
             inputs[idx + 1].focus();
         } else if (idx === inputs.length - 1) {
-            e.preventDefault();
             inputs[idx].click();
         }
     }
+};
+
+/* 단가 산술식 계산 (예: 1000*3, 500+200, 100*5+50 등) */
+const evalArithmetic = (val) => {
+    if (!val || typeof val !== 'string') return val;
+    const expr = val.replace(/\s/g, '');
+    // 숫자와 +, -, *, / 만 허용 (안전한 산술식만)
+    if (/^[\d+\-*/().]+$/.test(expr) && /[+\-*/]/.test(expr)) {
+        try {
+            const result = Function('"use strict"; return (' + expr + ')')();
+            if (typeof result === 'number' && isFinite(result)) {
+                return Math.round(result);
+            }
+        } catch(e) { /* 계산 불가능하면 원래 값 유지 */ }
+    }
+    return val;
 };
 
 function showToast(m) {
@@ -515,7 +556,7 @@ function EstimateForm({ init, onSave, onClose, onConvertToSales, ledgerRows, all
                             h('td', null, h('input', { value: it.spec, onChange: e => updateItem(idx, 'spec', e.target.value), list: 'dl-est-specs', placeholder: '규격', onKeyDown: handleEnter })),
                             h('td', null, h('input', { type: 'number', value: it.qty, onChange: e => updateItem(idx, 'qty', e.target.value), placeholder: '0', onKeyDown: handleEnter })),
                             h('td', null, h('input', { value: it.unit, onChange: e => updateItem(idx, 'unit', e.target.value), list: 'dl-est-units', placeholder: '단위', onKeyDown: handleEnter })),
-                            h('td', null, h('input', { type: 'number', value: it.price, onChange: e => updateItem(idx, 'price', e.target.value), placeholder: '0', onKeyDown: handleEnter })),
+                            h('td', null, h('input', { type: 'text', inputMode: 'numeric', value: it.price, onChange: e => updateItem(idx, 'price', e.target.value), onBlur: e => { const v = evalArithmetic(e.target.value); if (v !== e.target.value) updateItem(idx, 'price', v); }, placeholder: '0 (산술식 가능)', onKeyDown: handleEnter })),
                             h('td', { className: 'est-amt' }, N((+it.qty || 0) * (+it.price || 0))),
                             h('td', null, h('input', { value: it.note, onChange: e => updateItem(idx, 'note', e.target.value), placeholder: '', onKeyDown: handleEnter })),
                             h('td', null, it.name && h('button', { className: 'est-row-del', onClick: () => removeItem(idx) }, '×'))))),
@@ -591,18 +632,20 @@ function App() {
         const MASTER_KEY = '$2a$10$Yn.2Wd1ozhBFFCGjQpl0bOOz1.AsTeRvSH0.W/UANwsD.vIPdP5t2'; 
         if (MASTER_KEY.includes('placeholder')) return showToast('API 키를 먼저 설정해야 합니다.');
         
-        showToast(mode === 'up' ? '클라우드에 저장 중...' : '클라우드에서 불러오는 중...');
+        showToast(mode === 'up' ? '클라우드에 저장 중... (매출+견적서)' : '클라우드에서 불러오는 중...');
         try {
             if (mode === 'up') {
+                // 매출장부 + 견적서 + 직원목록을 통합 번들로 저장
+                const bundle = { rows, estimates, staffList, _version: 2, _syncedAt: new Date().toISOString() };
                 const res = await fetch(`https://api.jsonbin.io/v3/b/${syncKey}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
-                    body: JSON.stringify(rows)
+                    body: JSON.stringify(bundle)
                 });
                 console.log('Upload response:', res.status);
                 if (res.ok) {
                     localStorage.setItem('ag_sync_key', syncKey);
-                    showToast('✅ 클라우드 저장 완료!');
+                    showToast(`✅ 클라우드 저장 완료! (매출 ${rows.length}건, 견적서 ${estimates.length}건)`);
                 } else {
                     const err = await res.json();
                     console.error('Upload Error:', err);
@@ -614,10 +657,28 @@ function App() {
                 });
                 console.log('Download response:', res.status);
                 const data = await res.json();
-                if (data.record && Array.isArray(data.record)) {
-                    setRows(data.record);
-                    localStorage.setItem('antigravity_ledger', JSON.stringify(data.record));
-                    showToast('✅ 데이터 동기화 완료!');
+                const record = data.record;
+
+                if (record && record._version === 2) {
+                    // 신규 번들 포맷 (v2): rows + estimates + staffList
+                    if (Array.isArray(record.rows)) {
+                        setRows(record.rows);
+                        localStorage.setItem(KEY, JSON.stringify(record.rows));
+                    }
+                    if (Array.isArray(record.estimates)) {
+                        setEstimates(record.estimates);
+                        localStorage.setItem(EST_KEY, JSON.stringify(record.estimates));
+                    }
+                    if (Array.isArray(record.staffList)) {
+                        setStaffList(record.staffList);
+                        localStorage.setItem('ag_staff_list', JSON.stringify(record.staffList));
+                    }
+                    showToast(`✅ 동기화 완료! (매출 ${(record.rows||[]).length}건, 견적서 ${(record.estimates||[]).length}건)`);
+                } else if (record && Array.isArray(record)) {
+                    // 레거시 포맷 (구 배열): rows만 있는 이전 데이터 호환
+                    setRows(record);
+                    localStorage.setItem(KEY, JSON.stringify(record));
+                    showToast('✅ 데이터 동기화 완료! (이전 포맷 - 매출만)');
                 } else {
                     console.error('Download Error:', data);
                     showToast(`받기 실패: 연동 코드를 확인하세요.`);
